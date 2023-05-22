@@ -1,4 +1,4 @@
-import { FlatList } from 'react-native'
+import { FlatList, Alert } from 'react-native'
 import { useState } from 'react'
 import { useRoute } from '@react-navigation/native'
 
@@ -12,25 +12,59 @@ import { ListEmpty } from '@components/ListEmpty'
 import { Button } from '@components/Button'
 
 import { Container, Form, HeaderList, NumberOfPlayer } from './styles'
+import { AppError } from '@utils/AppError'
+import { playerAddByGroups } from '../../Storage/player/playerAddByGroup'
+import { playersGetByGroups } from '../../Storage/player/playersGetByGroups'
 
 type RouteParams = {
   group: string
 }
 
 export function Players() {
+  const [newPlayerName, setNewPlayerName] = useState('')
   const [team, setTeam] = useState('Time A')
   const [players, setPlayers] = useState([])
 
   const route = useRoute()
   const { group } = route.params as RouteParams
+
+  async function handleAddPlayer() {
+    if (newPlayerName.trim().length === 0) {
+      return Alert.alert('Novo Jogador', 'Informe o nome do novo jogador')
+    }
+
+    const newPlayer = {
+      // o novo player precisa ter um nome e um team conforme foi passado para a tipagem DTO
+      name: newPlayerName,
+      team,
+    }
+
+    try {
+      await playerAddByGroups(newPlayer, group)
+      const players = await playersGetByGroups(group)
+      console.log(players)
+    } catch (error) {
+      if (error instanceof AppError) {
+        Alert.alert('Nove Pessoa', error.message)
+      } else {
+        console.log(error)
+        Alert.alert('Nove Pessoa', 'Não foi possível adicionar')
+      }
+    }
+  }
+
   return (
     <Container>
       <Header showBackButton />
 
       <Highlight title={group} subtitle="Adicione a galera e separe o times " />
       <Form>
-        <Input placeholder="Nome da pessoa" autoCorrect={false} />
-        <ButtonIcon icon="add" />
+        <Input
+          placeholder="Nome da pessoa"
+          autoCorrect={false}
+          onChangeText={setNewPlayerName}
+        />
+        <ButtonIcon icon="add" onPress={handleAddPlayer} />
       </Form>
 
       <HeaderList>
