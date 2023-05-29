@@ -1,6 +1,6 @@
-import { FlatList, Alert } from 'react-native'
-import { useState } from 'react'
-import { useRoute } from '@react-navigation/native'
+import { FlatList, Alert, TextInput } from 'react-native'
+import { useState, useEffect, useRef } from 'react'
+import { useNavigation, useRoute } from '@react-navigation/native'
 
 import { Highlight } from '@components/Highlight'
 import { Header } from '@components/Header'
@@ -14,7 +14,10 @@ import { Button } from '@components/Button'
 import { Container, Form, HeaderList, NumberOfPlayer } from './styles'
 import { AppError } from '@utils/AppError'
 import { playerAddByGroups } from '../../Storage/player/playerAddByGroup'
-import { playersGetByGroups } from '../../Storage/player/playersGetByGroups'
+import { playersGetByGroupAndTeam } from '../../Storage/player/playerGetByGroupAndTeam'
+import { playerRemoveByGroup } from '../../Storage/player/playerRemoveByGroup'
+import { PlayerStorageDTO } from 'src/Storage/player/PlayerStorageDTO'
+import { groupRemoveByName } from '../../Storage/group/groupRemoveByName'
 
 type RouteParams = {
   group: string
@@ -23,14 +26,19 @@ type RouteParams = {
 export function Players() {
   const [newPlayerName, setNewPlayerName] = useState('')
   const [team, setTeam] = useState('Time A')
-  const [players, setPlayers] = useState([])
+  const [players, setPlayers] = useState<PlayerStorageDTO[]>([])
 
+  const navigation = useNavigation()
   const route = useRoute()
   const { group } = route.params as RouteParams
+
+  const newPlayerNameInputRef = useRef<TextInput>(null)
 
   async function handleAddPlayer() {
     if (newPlayerName.trim().length === 0) {
       return Alert.alert('Novo Jogador', 'Informe o nome do novo jogador')
+      // faz uma verificação se de fato a pessoa digitou o nome do jogador
+      // o trim serve para que espaços não sejam contabilizados como caracter
     }
 
     const newPlayer = {
@@ -41,8 +49,17 @@ export function Players() {
 
     try {
       await playerAddByGroups(newPlayer, group)
-      const players = await playersGetByGroups(group)
-      console.log(players)
+      // chama a função passa o nove jogador e o grupo que foi passado como parametro da rota
+      // quando é selecionado o grupo
+
+      newPlayerNameInputRef.current?.blur()
+
+      setNewPlayerName('')
+      // assim que alguem for add o input será limpado
+      // e como foi passado o valor do input como o estado sempre que ele atualiza ele será limpado
+
+      fetchPlayersByTeam()
+      // assim que o player for add chama a função e automaticamente regarrega a aplicação atraves do useEffect
     } catch (error) {
       if (error instanceof AppError) {
         Alert.alert('Nove Pessoa', error.message)
@@ -53,6 +70,52 @@ export function Players() {
     }
   }
 
+  async function fetchPlayersByTeam() {
+    // eslint-disable-next-line no-useless-catch
+    try {
+      const playersByTeam = await playersGetByGroupAndTeam(group, team)
+      // pega o grupo e o time que estão armazenados na interface e no estado
+      setPlayers(playersByTeam)
+      // setplayers é a função do estado que armazena um array de jogadores
+      // e passando para ele o playersbyteam que esta armazenando os o player do grupo selecionado de forma filtrada
+    } catch (error) {
+      console.log(error)
+    }
+  }
+
+  async function handlePlayerRemove(playerName: string) {
+    try {
+      await playerRemoveByGroup(playerName, group)
+      fetchPlayersByTeam()
+    } catch (error) {
+      console.log(error)
+    }
+  }
+
+  async function groupRemove() {
+    try {
+      await groupRemoveByName(group)
+      navigation.navigate('groups')
+      // quando o grupo for removido volta para página inicial
+    } catch (error) {
+      console.log(error)
+    }
+  }
+
+  async function handleGroupRemove() {
+    Alert.alert('Remover', 'Deseja remover o grupos', [
+      { text: 'Não', style: 'cancel' },
+      { text: 'Sim', onPress: () => groupRemove() },
+    ])
+  }
+
+  useEffect(() => {
+    // o que ele executa
+    fetchPlayersByTeam()
+
+    // no array de dependencias o hook será executado sempre que o estado de filter do team mudar
+  }, [team])
+
   return (
     <Container>
       <Header showBackButton />
@@ -60,9 +123,13 @@ export function Players() {
       <Highlight title={group} subtitle="Adicione a galera e separe o times " />
       <Form>
         <Input
+          inputRef={newPlayerNameInputRef}
+          onChangeText={setNewPlayerName}
+          value={newPlayerName}
           placeholder="Nome da pessoa"
           autoCorrect={false}
-          onChangeText={setNewPlayerName}
+          onSubmitEditing={handleAddPlayer}
+          returnKeyType="done"
         />
         <ButtonIcon icon="add" onPress={handleAddPlayer} />
       </Form>
@@ -86,9 +153,12 @@ export function Players() {
       </HeaderList>
       <FlatList
         data={players}
-        keyExtractor={(item) => item}
+        keyExtractor={(item) => item.name}
         renderItem={({ item }) => (
-          <PlayerCard name={item} onRemove={() => {}} />
+          <PlayerCard
+            name={item.name}
+            onRemove={() => handlePlayerRemove(item.name)}
+          />
         )}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
@@ -101,7 +171,11 @@ export function Players() {
         )}
       />
 
-      <Button title="Remover Turma" type="secondary" />
+      <Button
+        title="Remover Turma"
+        type="secondary"
+        onPress={handleGroupRemove}
+      />
     </Container>
   )
 }
